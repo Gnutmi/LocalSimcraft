@@ -1,0 +1,797 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>simlocal · SimulationCraft</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    /* ---- design tokens ----------------------------------------------- */
+    :root {
+      --bg:        #0c0d10;
+      --bg-elev:   #16181c;
+      --bg-elev-2: #1d2026;
+      --border:    #272930;
+      --border-2:  #353841;
+      --text:      #e8e6e0;
+      --muted:     #8b8a85;
+      --muted-2:   #5e5d59;
+      --accent:    #e8a73c;   /* amber */
+      --accent-dim:#a47322;
+      --good:      #7eb87a;
+      --warn:      #d8a35c;
+      --bad:       #d96565;
+      --info:      #6aa3c4;
+      --display:  'Fraunces', Georgia, serif;
+      --sans:     'IBM Plex Sans', system-ui, sans-serif;
+      --mono:     'IBM Plex Mono', ui-monospace, Consolas, monospace;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 14px/1.5 var(--sans);
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    button {
+      font: inherit;
+      cursor: pointer;
+      background: var(--bg-elev-2);
+      color: var(--text);
+      border: 1px solid var(--border-2);
+      padding: 8px 14px;
+      border-radius: 4px;
+      transition: background .12s, border-color .12s;
+    }
+    button:hover:not(:disabled) { background: #2a2d35; border-color: var(--accent-dim); }
+    button:disabled { opacity: .45; cursor: not-allowed; }
+    button.primary {
+      background: var(--accent);
+      color: #1a1407;
+      border-color: var(--accent);
+      font-weight: 500;
+    }
+    button.primary:hover:not(:disabled) { background: #f0b34d; border-color: #f0b34d; }
+    input, textarea, select {
+      font: inherit;
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 8px 10px;
+      border-radius: 4px;
+      outline: none;
+    }
+    input:focus, textarea:focus, select:focus {
+      border-color: var(--accent-dim);
+      box-shadow: 0 0 0 2px rgba(232,167,60,.12);
+    }
+    textarea {
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 1.5;
+      resize: vertical;
+      min-height: 220px;
+      width: 100%;
+    }
+
+    /* ---- layout ------------------------------------------------------ */
+    .app {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      height: 100vh;
+    }
+    aside {
+      border-right: 1px solid var(--border);
+      background: #0a0b0e;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+    }
+    main {
+      overflow-y: auto;
+      padding: 28px 36px 60px;
+      max-width: 1100px;
+    }
+    header.brand {
+      padding: 20px 22px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    header.brand h1 {
+      font-family: var(--display);
+      font-weight: 500;
+      font-size: 26px;
+      margin: 0;
+      letter-spacing: -0.5px;
+    }
+    header.brand h1 .lo { color: var(--accent); font-style: italic; }
+    header.brand .sub {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 2px;
+      font-family: var(--mono);
+    }
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-family: var(--mono);
+      color: var(--muted);
+      margin-top: 10px;
+      padding: 4px 8px;
+      border: 1px solid var(--border);
+      border-radius: 3px;
+    }
+    .status-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--muted-2);
+    }
+    .status-pill.ok .status-dot { background: var(--good); }
+    .status-pill.bad .status-dot { background: var(--bad); }
+
+    /* nav tabs in sidebar */
+    nav.tabs {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    nav.tabs button {
+      width: 100%;
+      text-align: left;
+      background: transparent;
+      border: 1px solid transparent;
+      padding: 8px 12px;
+      margin-bottom: 2px;
+      color: var(--muted);
+      border-radius: 3px;
+    }
+    nav.tabs button:hover { color: var(--text); background: var(--bg-elev); }
+    nav.tabs button.active {
+      color: var(--text);
+      background: var(--bg-elev);
+      border-color: var(--border);
+    }
+    nav.tabs button.active::before {
+      content: "▸";
+      color: var(--accent);
+      margin-right: 8px;
+    }
+
+    /* job list */
+    .jobs-header {
+      padding: 14px 16px 8px;
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    ul.joblist {
+      list-style: none;
+      margin: 0;
+      padding: 0 8px 16px;
+      flex: 1;
+      overflow-y: auto;
+    }
+    ul.joblist li {
+      padding: 10px 12px;
+      border-radius: 3px;
+      cursor: pointer;
+      border: 1px solid transparent;
+      margin-bottom: 2px;
+    }
+    ul.joblist li:hover { background: var(--bg-elev); }
+    ul.joblist li.active {
+      background: var(--bg-elev);
+      border-color: var(--border-2);
+    }
+    .job-label {
+      font-size: 13px;
+      font-weight: 500;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+    .job-meta {
+      display: flex;
+      justify-content: space-between;
+      font-family: var(--mono);
+      font-size: 10.5px;
+      color: var(--muted);
+      margin-top: 3px;
+    }
+    .job-status {
+      font-family: var(--mono);
+      font-size: 10.5px;
+      padding: 1px 6px;
+      border-radius: 3px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .s-queued      { background: #2a2823; color: var(--warn); }
+    .s-running     { background: #2a3326; color: var(--good); animation: pulse 1.6s infinite; }
+    .s-done        { background: #1f2a23; color: var(--good); }
+    .s-error       { background: #2e1f1f; color: var(--bad); }
+    .s-interrupted { background: #2a2823; color: var(--muted); }
+    @keyframes pulse { 50% { opacity: .55; } }
+
+    /* main content */
+    .page-head {
+      margin-bottom: 24px;
+      padding-bottom: 18px;
+      border-bottom: 1px solid var(--border);
+    }
+    .page-head h2 {
+      font-family: var(--display);
+      font-weight: 500;
+      font-size: 30px;
+      margin: 0;
+      letter-spacing: -0.4px;
+    }
+    .page-head p {
+      color: var(--muted);
+      margin: 6px 0 0;
+      max-width: 70ch;
+    }
+
+    .form-block { margin-bottom: 18px; }
+    .form-block label {
+      display: block;
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .form-block .hint {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 14px;
+    }
+    .actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      padding-top: 10px;
+      border-top: 1px solid var(--border);
+      margin-top: 18px;
+    }
+    .actions .spacer { flex: 1; }
+    .err {
+      color: var(--bad);
+      background: #2a1818;
+      border: 1px solid #4d2222;
+      padding: 8px 12px;
+      border-radius: 3px;
+      margin-top: 12px;
+      font-size: 13px;
+    }
+
+    /* job detail view */
+    .detail-head {
+      display: flex;
+      gap: 16px;
+      align-items: baseline;
+      margin-bottom: 12px;
+    }
+    .detail-head h2 {
+      font-family: var(--display);
+      font-weight: 500;
+      font-size: 24px;
+      margin: 0;
+    }
+    .detail-head .id {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .progress-wrap {
+      height: 4px;
+      background: var(--bg-elev);
+      border-radius: 2px;
+      overflow: hidden;
+      margin-bottom: 16px;
+    }
+    .progress-bar {
+      height: 100%;
+      background: var(--accent);
+      transition: width .25s ease;
+    }
+    .panels {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 18px;
+    }
+    .panel {
+      background: var(--bg-elev);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+    }
+    .panel h3 {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin: 0;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .panel .body { padding: 14px 16px; }
+    pre.log {
+      font-family: var(--mono);
+      font-size: 11.5px;
+      color: #c9c8c2;
+      background: #0a0b0e;
+      margin: 0;
+      padding: 12px 14px;
+      max-height: 320px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    /* results table */
+    table.results {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    table.results th, table.results td {
+      text-align: left;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    table.results th {
+      font-family: var(--mono);
+      font-size: 10.5px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-weight: 500;
+    }
+    table.results td.dps { font-family: var(--mono); text-align: right; }
+    table.results td.delta { font-family: var(--mono); text-align: right; }
+    .delta.up   { color: var(--good); }
+    .delta.down { color: var(--bad);  }
+    .delta.zero { color: var(--muted); }
+
+    .empty {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--muted);
+      font-style: italic;
+    }
+    .kbd {
+      font-family: var(--mono);
+      font-size: 11px;
+      background: var(--bg-elev-2);
+      padding: 2px 6px;
+      border-radius: 3px;
+      border: 1px solid var(--border-2);
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside>
+      <header class="brand">
+        <h1>sim<span class="lo">local</span></h1>
+        <div class="sub">SimulationCraft · local edition</div>
+        <div id="status" class="status-pill"><span class="status-dot"></span><span>checking…</span></div>
+      </header>
+
+      <nav class="tabs">
+        <button data-tab="quick"       class="active">Quick Sim</button>
+        <button data-tab="droptimizer">Droptimizer</button>
+        <button data-tab="topgear">Top Gear</button>
+      </nav>
+
+      <div class="jobs-header">History</div>
+      <ul class="joblist" id="joblist"></ul>
+    </aside>
+
+    <main>
+      <!-- Quick Sim --------------------------------------------------- -->
+      <section class="page" id="page-quick">
+        <div class="page-head">
+          <h2>Quick Sim</h2>
+          <p>Paste your character export from the in-game SimulationCraft addon and run a single sim. The full HTML report opens in a new tab when it's done.</p>
+        </div>
+        <div class="form-block">
+          <label>SimC profile (from the in-game addon)</label>
+          <textarea id="quick-profile" placeholder='warrior="Uwantmace"&#10;level=80&#10;race=orc&#10;…'></textarea>
+        </div>
+        <div class="row">
+          <div class="form-block">
+            <label>Iterations</label>
+            <input type="number" id="quick-iter" value="10000" min="100" step="1000" />
+            <div class="hint">Default 10,000. Raidbots Pro uses 25,000.</div>
+          </div>
+          <div class="form-block">
+            <label>Threads</label>
+            <input type="number" id="quick-threads" placeholder="auto" min="1" />
+            <div class="hint">Blank = use all CPU cores.</div>
+          </div>
+          <div></div>
+        </div>
+        <div class="actions">
+          <div class="spacer"></div>
+          <button class="primary" id="quick-go">Run sim</button>
+        </div>
+        <div class="err" id="quick-err" style="display:none"></div>
+      </section>
+
+      <!-- Droptimizer ------------------------------------------------- -->
+      <section class="page" id="page-droptimizer" style="display:none">
+        <div class="page-head">
+          <h2>Droptimizer</h2>
+          <p>Sim every potential drop from a raid or dungeon to see exactly how much DPS each upgrade is worth. Provide your profile and a list of candidate items in SimC gear-line format (one per line).</p>
+        </div>
+        <div class="form-block">
+          <label>Base profile</label>
+          <textarea id="drop-profile" placeholder='warrior="Uwantmace"&#10;level=80&#10;…'></textarea>
+        </div>
+        <div class="form-block">
+          <label>Candidate items — one per line</label>
+          <textarea id="drop-items" placeholder='trinket1=,id=219308,bonus_id=4824/1488/4786 # Some Trinket&#10;finger1=,id=219309,bonus_id=4824/1488/4786 # Some Ring&#10;chest=,id=219310,bonus_id=4824/1488'></textarea>
+          <div class="hint">Format: <span class="kbd">slot=,id=NNNN,bonus_id=A/B/C</span>. Easiest source: copy item lines from a fresh addon export, or build them from Wowhead. Rings and trinkets are auto-tested in both slots.</div>
+        </div>
+        <div class="row">
+          <div class="form-block">
+            <label>Iterations</label>
+            <input type="number" id="drop-iter" value="10000" min="100" step="1000" />
+            <div class="hint">Per profileset.</div>
+          </div>
+          <div class="form-block">
+            <label>Threads</label>
+            <input type="number" id="drop-threads" placeholder="auto" min="1" />
+          </div>
+          <div></div>
+        </div>
+        <div class="actions">
+          <div class="spacer"></div>
+          <button class="primary" id="drop-go">Run droptimizer</button>
+        </div>
+        <div class="err" id="drop-err" style="display:none"></div>
+      </section>
+
+      <!-- Top Gear ---------------------------------------------------- -->
+      <section class="page" id="page-topgear" style="display:none">
+        <div class="page-head">
+          <h2>Top Gear</h2>
+          <p>Find the best piece in your bags for each slot. Tick "Show Bag Items" in the SimC addon before exporting — this picks up the commented bag-item lines and tests each as a swap.</p>
+        </div>
+        <div class="form-block">
+          <label>SimC profile (must include bag items)</label>
+          <textarea id="tg-profile" placeholder='warrior="Uwantmace"&#10;…&#10;### Gear from Bags&#10;#trinket1=,id=...'></textarea>
+        </div>
+        <div class="row">
+          <div class="form-block">
+            <label>Iterations</label>
+            <input type="number" id="tg-iter" value="10000" min="100" step="1000" />
+          </div>
+          <div class="form-block">
+            <label>Threads</label>
+            <input type="number" id="tg-threads" placeholder="auto" min="1" />
+          </div>
+          <div></div>
+        </div>
+        <div class="actions">
+          <div class="spacer"></div>
+          <button class="primary" id="tg-go">Run top gear</button>
+        </div>
+        <div class="err" id="tg-err" style="display:none"></div>
+      </section>
+
+      <!-- Job detail -------------------------------------------------- -->
+      <section class="page" id="page-job" style="display:none"></section>
+    </main>
+  </div>
+
+  <script>
+    // ---- state ----------------------------------------------------------
+    const state = {
+      jobs: new Map(),          // id -> job snapshot from server
+      selectedJobId: null,
+      activeTab: 'quick',       // which form is showing when no job selected
+    };
+
+    // ---- elements -------------------------------------------------------
+    const el = {
+      status:    document.getElementById('status'),
+      joblist:   document.getElementById('joblist'),
+      pages: {
+        quick:       document.getElementById('page-quick'),
+        droptimizer: document.getElementById('page-droptimizer'),
+        topgear:     document.getElementById('page-topgear'),
+        job:         document.getElementById('page-job'),
+      },
+    };
+
+    // ---- networking -----------------------------------------------------
+    async function fetchStatus() {
+      try {
+        const r = await fetch('/api/status');
+        const s = await r.json();
+        const dot = el.status;
+        dot.classList.toggle('ok',  s.simcOk);
+        dot.classList.toggle('bad', !s.simcOk);
+        dot.querySelector('span:last-child').textContent =
+          s.simcOk ? `simc ready · ${s.cpus} cores` : `simc not found`;
+        dot.title = s.simcPath;
+      } catch {
+        el.status.classList.add('bad');
+        el.status.querySelector('span:last-child').textContent = 'server unreachable';
+      }
+    }
+
+    function connectWS() {
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const ws = new WebSocket(`${proto}//${location.host}/ws`);
+      ws.onmessage = (ev) => {
+        const msg = JSON.parse(ev.data);
+        if (msg.type === 'snapshot') {
+          state.jobs.clear();
+          for (const j of msg.jobs) state.jobs.set(j.id, j);
+        } else if (msg.type === 'update') {
+          state.jobs.set(msg.job.id, msg.job);
+        }
+        renderJobList();
+        if (state.selectedJobId && state.jobs.has(state.selectedJobId)) {
+          renderJobDetail(state.jobs.get(state.selectedJobId));
+        }
+      };
+      // Auto-reconnect on drop. Sims can run for a while; we don't want the UI
+      // to silently stop updating if the WS hiccups.
+      ws.onclose = () => setTimeout(connectWS, 2000);
+    }
+
+    // ---- rendering ------------------------------------------------------
+    function renderJobList() {
+      const jobs = [...state.jobs.values()].sort((a, b) => b.createdAt - a.createdAt);
+      if (jobs.length === 0) {
+        el.joblist.innerHTML = '<li style="color:var(--muted-2);font-style:italic;padding:8px 12px;">No jobs yet.</li>';
+        return;
+      }
+      el.joblist.innerHTML = jobs.map((j) => {
+        const t = new Date(j.createdAt);
+        const ago = formatAgo(j.createdAt);
+        const cls = j.id === state.selectedJobId ? 'active' : '';
+        return `
+          <li class="${cls}" data-id="${j.id}">
+            <div class="job-label">${escapeHtml(j.label)}</div>
+            <div class="job-meta">
+              <span>${j.kind} · ${ago}</span>
+              <span class="job-status s-${j.status}">${j.status}${j.status === 'running' ? ' ' + j.progress + '%' : ''}</span>
+            </div>
+          </li>`;
+      }).join('');
+      el.joblist.querySelectorAll('li[data-id]').forEach((li) => {
+        li.addEventListener('click', () => selectJob(li.dataset.id));
+      });
+    }
+
+    function renderJobDetail(job) {
+      const page = el.pages.job;
+      const reportUrl = `/reports/${job.id}/report.html`;
+      const inputUrl  = `/reports/${job.id}/input.simc`;
+
+      const results = job.results;
+      let resultsHtml = '';
+      if (results && results.profilesets && results.profilesets.length) {
+        const baseDps = results.baseline?.dps ?? null;
+        resultsHtml = `
+          <div class="panel">
+            <h3>Profileset results</h3>
+            <table class="results">
+              <thead>
+                <tr>
+                  <th>Profileset</th>
+                  <th style="text-align:right;">DPS</th>
+                  <th style="text-align:right;">Δ vs baseline</th>
+                  <th style="text-align:right;">% change</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${baseDps !== null ? `
+                  <tr>
+                    <td><em>baseline (${escapeHtml(results.baseline.name || 'current gear')})</em></td>
+                    <td class="dps">${fmtDps(baseDps)}</td>
+                    <td class="delta zero">—</td>
+                    <td class="delta zero">—</td>
+                  </tr>` : ''}
+                ${results.profilesets.map((p) => {
+                  const delta = baseDps !== null && p.dps !== null ? p.dps - baseDps : null;
+                  const pct   = (delta !== null && baseDps) ? (delta / baseDps) * 100 : null;
+                  const cls   = delta === null ? 'zero' : delta > 0 ? 'up' : delta < 0 ? 'down' : 'zero';
+                  const sign  = delta === null ? '—' : (delta >= 0 ? '+' : '');
+                  return `
+                    <tr>
+                      <td>${escapeHtml(p.name)}</td>
+                      <td class="dps">${p.dps !== null ? fmtDps(p.dps) : '—'}</td>
+                      <td class="delta ${cls}">${delta !== null ? sign + fmtDps(delta) : '—'}</td>
+                      <td class="delta ${cls}">${pct !== null ? sign + pct.toFixed(2) + '%' : '—'}</td>
+                    </tr>`;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>`;
+      } else if (job.status === 'done' && job.kind === 'quick') {
+        // Quick sim has no profilesets table — encourage opening the full report.
+        resultsHtml = `
+          <div class="panel"><div class="body" style="padding:24px;text-align:center;">
+            <p style="margin:0 0 14px;color:var(--muted);">Quick sim complete. Open the full report for the breakdown.</p>
+            <a href="${reportUrl}" target="_blank"><button class="primary">Open report ↗</button></a>
+          </div></div>`;
+      }
+
+      page.innerHTML = `
+        <div class="page-head">
+          <div class="detail-head">
+            <h2>${escapeHtml(job.label)}</h2>
+            <span class="id">${job.id}</span>
+            <span class="job-status s-${job.status}">${job.status}</span>
+          </div>
+          <div style="font-family:var(--mono);font-size:12px;color:var(--muted);">
+            ${job.kind} ·
+            created ${new Date(job.createdAt).toLocaleString()}
+            ${job.finishedAt ? ' · ran ' + ((job.finishedAt - job.startedAt)/1000).toFixed(1) + 's' : ''}
+          </div>
+        </div>
+
+        ${job.status === 'running' ? `
+          <div class="progress-wrap"><div class="progress-bar" style="width:${job.progress}%;"></div></div>
+        ` : ''}
+
+        ${job.error ? `<div class="err">${escapeHtml(job.error)}</div>` : ''}
+
+        <div class="panels">
+          ${resultsHtml}
+
+          ${job.status === 'done' ? `
+            <div class="panel">
+              <h3>Artifacts</h3>
+              <div class="body" style="display:flex;gap:12px;flex-wrap:wrap;">
+                <a href="${reportUrl}" target="_blank"><button>Open SimC report ↗</button></a>
+                <a href="${inputUrl}"  target="_blank"><button>View input.simc</button></a>
+              </div>
+            </div>` : ''}
+
+          <div class="panel">
+            <h3>Live log</h3>
+            <pre class="log" id="logpane">${escapeHtml((job.log || []).join('\n'))}</pre>
+          </div>
+        </div>
+      `;
+
+      // Auto-scroll the log to the bottom while a sim is running.
+      const log = page.querySelector('#logpane');
+      if (log) log.scrollTop = log.scrollHeight;
+    }
+
+    function showPage(name) {
+      for (const k of Object.keys(el.pages)) {
+        el.pages[k].style.display = (k === name) ? '' : 'none';
+      }
+    }
+
+    function selectJob(id) {
+      state.selectedJobId = id;
+      const job = state.jobs.get(id);
+      if (!job) return;
+      // Highlight in sidebar
+      el.joblist.querySelectorAll('li').forEach((li) => {
+        li.classList.toggle('active', li.dataset.id === id);
+      });
+      showPage('job');
+      renderJobDetail(job);
+    }
+
+    function selectTab(name) {
+      state.selectedJobId = null;
+      state.activeTab = name;
+      document.querySelectorAll('nav.tabs button').forEach((b) =>
+        b.classList.toggle('active', b.dataset.tab === name));
+      el.joblist.querySelectorAll('li').forEach((li) => li.classList.remove('active'));
+      showPage(name);
+    }
+
+    // ---- form handlers --------------------------------------------------
+    async function submitJob(endpoint, body, errEl, btn) {
+      errEl.style.display = 'none';
+      btn.disabled = true;
+      try {
+        const r = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
+        // The WS will deliver the new job in a snapshot/update before this
+        // resolves on slow networks, but we still nudge the selection so the
+        // user immediately sees their submitted job.
+        setTimeout(() => selectJob(data.id), 50);
+      } catch (err) {
+        errEl.textContent = err.message;
+        errEl.style.display = '';
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    document.getElementById('quick-go').addEventListener('click', () => {
+      const profile    = document.getElementById('quick-profile').value.trim();
+      const iterations = Number(document.getElementById('quick-iter').value) || undefined;
+      const threadsRaw = document.getElementById('quick-threads').value;
+      const threads    = threadsRaw ? Number(threadsRaw) : undefined;
+      submitJob('/api/sim/quick',
+        { profile, iterations, threads },
+        document.getElementById('quick-err'),
+        document.getElementById('quick-go'));
+    });
+
+    document.getElementById('drop-go').addEventListener('click', () => {
+      const profile    = document.getElementById('drop-profile').value.trim();
+      const candidates = document.getElementById('drop-items').value
+        .split('\n').map((s) => s.trim()).filter(Boolean);
+      const iterations = Number(document.getElementById('drop-iter').value) || undefined;
+      const threadsRaw = document.getElementById('drop-threads').value;
+      const threads    = threadsRaw ? Number(threadsRaw) : undefined;
+      submitJob('/api/sim/droptimizer',
+        { profile, candidates, iterations, threads },
+        document.getElementById('drop-err'),
+        document.getElementById('drop-go'));
+    });
+
+    document.getElementById('tg-go').addEventListener('click', () => {
+      const profile    = document.getElementById('tg-profile').value.trim();
+      const iterations = Number(document.getElementById('tg-iter').value) || undefined;
+      const threadsRaw = document.getElementById('tg-threads').value;
+      const threads    = threadsRaw ? Number(threadsRaw) : undefined;
+      submitJob('/api/sim/topgear',
+        { profile, iterations, threads },
+        document.getElementById('tg-err'),
+        document.getElementById('tg-go'));
+    });
+
+    document.querySelectorAll('nav.tabs button').forEach((b) =>
+      b.addEventListener('click', () => selectTab(b.dataset.tab)));
+
+    // ---- helpers --------------------------------------------------------
+    function escapeHtml(s) {
+      return String(s ?? '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+    function fmtDps(n) {
+      if (n === null || n === undefined) return '—';
+      return Math.round(n).toLocaleString('en-US');
+    }
+    function formatAgo(ts) {
+      const s = (Date.now() - ts) / 1000;
+      if (s < 60)    return Math.round(s) + 's ago';
+      if (s < 3600)  return Math.round(s/60)   + 'm ago';
+      if (s < 86400) return Math.round(s/3600) + 'h ago';
+      return Math.round(s/86400) + 'd ago';
+    }
+
+    // ---- boot -----------------------------------------------------------
+    fetchStatus();
+    connectWS();
+    setInterval(fetchStatus, 30000); // re-poll status periodically
+  </script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+{
+  "name": "simlocal",
+  "version": "0.1.0",
+  "description": "Local Raidbots-style web UI for SimulationCraft",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "ws": "^8.18.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
