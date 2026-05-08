@@ -20,7 +20,7 @@ import { fileURLToPath } from 'node:url';
 import { promises as fs } from 'node:fs';
 import { WebSocketServer } from 'ws';
 
-import { SimcRunner, parseJsonReport } from './lib/simc.js';
+import { SimcRunner, runWithAutoSkip, parseJsonReport } from './lib/simc.js';
 import { JobQueue } from './lib/queue.js';
 import {
   buildQuickSim, buildDroptimizer, buildTopGear,
@@ -83,15 +83,30 @@ async function runJob(job, update) {
   update({ logLine: `[${new Date().toISOString()}] Starting ${job.kind} sim…` });
   update({ logLine: `simc: ${SIMC_PATH}` });
 
-  const { jsonPath } = await runner.run(job.simcInput, {
+  const { jsonPath, skippedItems } = await runWithAutoSkip(runner, job.simcInput, {
     iterations: job.options.iterations,
     threads:    job.options.threads,
+    maxRetries: 5,
     onProgress: ({ percent, line }) => {
       const patch = { logLine: line };
       if (typeof percent === 'number') patch.progress = percent;
       update(patch);
     },
   });
+
+  // Surface skipped items prominently in the log so the user can see what
+  // didn't get tested. Common reasons: wrong armor type for the class, items
+  // newer than the simc binary's data files, items with bonus IDs simc
+  // can't resolve.
+  if (skippedItems && skippedItems.length > 0) {
+    update({
+      logLine:
+        `[auto-skip] Final tally: ${skippedItems.length} item(s) excluded — ` +
+        skippedItems.map((n) => `"${n}"`).join(', ') +
+        `. Update simc.exe (https://www.simulationcraft.org/download.html) ` +
+        `if you expected these to work.`,
+    });
+  }
 
   // Parse the JSON report into a results table the UI can render directly,
   // so we don't have to re-parse on every page load.
