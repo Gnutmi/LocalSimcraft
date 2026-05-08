@@ -207,17 +207,28 @@ app.post('/api/sim/topgear', async (req, res) => {
   try {
     const { profile, iterations, threads } = req.body || {};
     if (!profile) return res.status(400).json({ error: 'profile is required' });
-    const { simc, count, skipped } = buildTopGear(profile);
+    const built = buildTopGear(profile);
+    const { simc, count, skipped, primaryStat, weaponConfig } = built;
     if (count === 0) {
       return res.status(400).json({
-        error: 'no bag items detected. Make sure the SimC addon export includes bag contents (the addon has a checkbox for this).',
+        error: 'no bag items left to test. Either no bag contents in your export ' +
+               '(make sure "Show Bag Items" is ticked in the SimC addon) or all of them ' +
+               'were filtered out as incompatible. ' +
+               (skipped.length ? `Skipped: ${skipped.length} item(s).` : ''),
       });
     }
+    const skippedCount = Array.isArray(skipped) ? skipped.length : (skipped || 0);
     const id = await queue.submit({
       kind: 'topgear',
-      label: `${extractCharLabel(profile) || 'Top Gear'} · ${count} swaps${skipped ? ` (${skipped} skipped)` : ''}`,
+      label: `${extractCharLabel(profile) || 'Top Gear'} · ${count} swap(s)` +
+             (skippedCount ? ` (${skippedCount} filtered)` : ''),
       simc,
       options: { iterations, threads },
+      meta: {
+        skippedItems: Array.isArray(skipped) ? skipped : [],
+        primaryStat,
+        weaponConfig,
+      },
     });
     res.json({ id });
   } catch (err) {
@@ -287,7 +298,7 @@ await checkSimc(); // warn at startup, but don't block — user can fix later
 
 server.listen(PORT, HOST, () => {
   const niceHost = HOST === '0.0.0.0' ? 'localhost' : HOST;
-  console.log(`\n  simlocal listening on http://${niceHost}:${PORT}\n`);
+  console.log(`\n  LocalSimcraft listening on http://${niceHost}:${PORT}\n`);
   console.log(`  SimC: ${SIMC_PATH}`);
   console.log(`  CPUs: ${os.cpus().length}\n`);
 });

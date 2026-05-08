@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>simlocal · SimulationCraft</title>
+  <title>LocalSimcraft</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -387,7 +387,7 @@
   <div class="app">
     <aside>
       <header class="brand">
-        <h1>sim<span class="lo">local</span></h1>
+        <h1>Local<span class="lo">Simcraft</span></h1>
         <div class="sub">SimulationCraft · local edition</div>
         <div id="status" class="status-pill"><span class="status-dot"></span><span>checking…</span></div>
       </header>
@@ -637,6 +637,49 @@
           </div></div>`;
       }
 
+      // Build the "filtered items" panel for Top Gear: surface what the
+      // pre-flight filter dropped (caster items, illegal weapon configs, etc.)
+      // and the detected character/weapon context. This makes it obvious why
+      // certain bag items aren't in the results — they were intentionally
+      // skipped, not lost.
+      let filteredHtml = '';
+      const meta = job.meta || {};
+      const skippedItems = Array.isArray(meta.skippedItems) ? meta.skippedItems : [];
+      if (job.kind === 'topgear' && (skippedItems.length || meta.primaryStat || meta.weaponConfig)) {
+        const cfg = meta.weaponConfig || {};
+        const cfgLabel = {
+          '2h':       '2-handed weapon',
+          'dual':     'dual-wielding',
+          'none':     'no weapon detected',
+        }[cfg.kind] || cfg.kind || 'unknown';
+
+        filteredHtml = `
+          <div class="panel">
+            <h3>Filter (${skippedItems.length} skipped)</h3>
+            <div class="body" style="font-size:12.5px;">
+              <div style="display:flex;gap:18px;flex-wrap:wrap;color:var(--muted);margin-bottom:${skippedItems.length ? '10px' : '0'};">
+                <span><strong style="color:var(--text);">Primary stat:</strong> ${escapeHtml(meta.primaryStat || 'unknown')}</span>
+                <span><strong style="color:var(--text);">Weapon config:</strong> ${escapeHtml(cfgLabel)}${cfg.mainName ? ' (' + escapeHtml(cfg.mainName) + ')' : ''}</span>
+              </div>
+              ${skippedItems.length ? `
+                <table class="results" style="margin-top:6px;">
+                  <thead><tr>
+                    <th>Item</th><th>Slot</th><th>Reason filtered</th>
+                  </tr></thead>
+                  <tbody>
+                    ${skippedItems.map((s) => `
+                      <tr>
+                        <td>${escapeHtml(s.label || '(unnamed)')}</td>
+                        <td style="color:var(--muted);">${escapeHtml(s.slot || '?')}</td>
+                        <td style="color:var(--muted);">${escapeHtml(s.reason || '')}</td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>` : ''}
+            </div>
+          </div>`;
+      }
+
       page.innerHTML = `
         <div class="page-head">
           <div class="detail-head">
@@ -659,6 +702,7 @@
 
         <div class="panels">
           ${resultsHtml}
+          ${filteredHtml}
 
           ${job.status === 'done' ? `
             <div class="panel">
