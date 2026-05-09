@@ -7,6 +7,24 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+
+  <!-- Wowhead tooltip script.
+       Any anchor whose href matches https://www.wowhead.com/item=NNN (or that
+       carries a data-wowhead="item=NNN&bonus=A:B:C&ilvl=NNN" attribute) gets
+       an item icon + hover tooltip rendered automatically. We also call
+       $WowheadPower.refreshLinks() after we render new result rows so newly
+       added links get processed. The configuration below tweaks the icon
+       layout. Free service, no API key required. -->
+  <script>
+    const whTooltips = {
+      colorLinks: true,
+      iconizeLinks: true,
+      renameLinks: false,
+      iconSize: 'small',
+    };
+  </script>
+  <script src="https://wow.zamimg.com/widgets/power.js" defer></script>
+
   <style>
     /* ---- design tokens ----------------------------------------------- */
     :root {
@@ -254,6 +272,44 @@
       color: var(--muted);
       margin-top: 4px;
     }
+
+    /* Recent profile chips strip — appears above each profile textarea.
+       Hidden when empty so it doesn't take up space on a fresh install. */
+    .recent-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+    .recent-chips:empty { display: none; }
+    .recent-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-family: var(--mono);
+      background: var(--bg-elev);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: 4px 8px 4px 10px;
+      color: var(--muted);
+      cursor: pointer;
+      transition: background .12s, border-color .12s, color .12s;
+    }
+    .recent-chip:hover {
+      background: var(--bg-elev-2);
+      border-color: var(--accent-dim);
+      color: var(--text);
+    }
+    .recent-chip .name { color: var(--text); font-family: var(--sans); font-size: 13px; }
+    .recent-chip .ago  { font-size: 10.5px; }
+    .recent-chip .x {
+      color: var(--muted-2);
+      font-size: 13px;
+      padding: 0 2px;
+      border-radius: 2px;
+    }
+    .recent-chip .x:hover { color: var(--bad); background: rgba(217,101,101,0.12); }
     .row {
       display: grid;
       grid-template-columns: 1fr 1fr 1fr;
@@ -367,6 +423,28 @@
     .delta.down { color: var(--bad);  }
     .delta.zero { color: var(--muted); }
 
+    /* Wowhead-linked item names. The widget script injects an <ins> wrapper
+       with a small icon background image. We constrain its size and align it
+       so it sits nicely in the row without bumping line height. */
+    .wh-link {
+      color: var(--text);
+      text-decoration: none;
+      border-bottom: 1px dotted transparent;
+    }
+    .wh-link:hover { border-bottom-color: var(--accent-dim); }
+    .wh-link-extra {
+      color: var(--muted);
+      font-size: 12px;
+      margin-left: 6px;
+    }
+    /* Wowhead's `iconize` flag wraps each link in <ins>...</ins>; the icon
+       is a 15x15 background-image. We give it a touch of right margin and
+       vertical alignment fix so the row reads cleanly. */
+    table.results td a.wh-link ins {
+      vertical-align: -3px;
+      margin-right: 6px;
+    }
+
     .empty {
       text-align: center;
       padding: 40px 20px;
@@ -411,6 +489,7 @@
         </div>
         <div class="form-block">
           <label>SimC profile (from the in-game addon)</label>
+          <div class="recent-chips" data-target="quick-profile"></div>
           <textarea id="quick-profile" placeholder='warrior="Uwantmace"&#10;level=80&#10;race=orc&#10;…'></textarea>
         </div>
         <div class="row">
@@ -441,6 +520,7 @@
         </div>
         <div class="form-block">
           <label>Base profile</label>
+          <div class="recent-chips" data-target="drop-profile"></div>
           <textarea id="drop-profile" placeholder='warrior="Uwantmace"&#10;level=80&#10;…'></textarea>
         </div>
         <div class="form-block">
@@ -475,6 +555,7 @@
         </div>
         <div class="form-block">
           <label>SimC profile (must include bag items)</label>
+          <div class="recent-chips" data-target="tg-profile"></div>
           <textarea id="tg-profile" placeholder='warrior="Uwantmace"&#10;…&#10;### Gear from Bags&#10;#trinket1=,id=...'></textarea>
         </div>
         <div class="row">
@@ -619,7 +700,7 @@
                   const sign  = delta === null ? '—' : (delta >= 0 ? '+' : '');
                   return `
                     <tr>
-                      <td>${escapeHtml(p.name)}</td>
+                      <td>${renderItemCell(p)}</td>
                       <td class="dps">${p.dps !== null ? fmtDps(p.dps) : '—'}</td>
                       <td class="delta ${cls}">${delta !== null ? sign + fmtDps(delta) : '—'}</td>
                       <td class="delta ${cls}">${pct !== null ? sign + pct.toFixed(2) + '%' : '—'}</td>
@@ -723,6 +804,11 @@
       // Auto-scroll the log to the bottom while a sim is running.
       const log = page.querySelector('#logpane');
       if (log) log.scrollTop = log.scrollHeight;
+
+      // After the DOM updates with new <a data-wowhead="..."> nodes, the
+      // Wowhead widget needs a kick to scan and decorate them. Calling on
+      // every renderJobDetail is fine — the widget is idempotent.
+      refreshWowheadLinks();
     }
 
     function showPage(name) {
@@ -768,6 +854,9 @@
         // resolves on slow networks, but we still nudge the selection so the
         // user immediately sees their submitted job.
         setTimeout(() => selectJob(data.id), 50);
+        // Refresh the recent-profiles strip so the just-saved profile shows
+        // up as a chip immediately.
+        loadRecentProfiles();
       } catch (err) {
         errEl.textContent = err.message;
         errEl.style.display = '';
@@ -820,6 +909,54 @@
         .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
+
+    /**
+     * Render a profileset result row's name cell. If the row carries item
+     * info (itemId, optional bonusIds, optional ilvl), wrap the name in a
+     * Wowhead anchor — the wow.zamimg widget script we loaded in <head>
+     * will swap in an icon and hover tooltip after the row mounts.
+     *
+     * If the profileset has extraItems (e.g. combo MH+OH), we render a
+     * second link after the first.
+     */
+    function renderItemCell(row) {
+      const item = row.item;
+      if (!item || !item.itemId) {
+        return escapeHtml(row.name);
+      }
+      const link = wowheadLink(item, row.name);
+      if (item.extraItems && item.extraItems.length) {
+        // Combo row: show MH link as the row name + small "+ OH" link after.
+        const extras = item.extraItems
+          .filter((e) => e.itemId)
+          .map((e) => wowheadLink(e, '+ ' + (e.displayName || `Item ${e.itemId}`),
+            { extra: true }))
+          .join(' ');
+        return `${link} ${extras}`;
+      }
+      return link;
+    }
+
+    function wowheadLink(item, text, opts = {}) {
+      const params = ['item=' + item.itemId];
+      if (item.bonusIds) params.push('bonus=' + item.bonusIds);
+      if (item.ilvl)     params.push('ilvl=' + item.ilvl);
+      const data = params.join('&');
+      const href = 'https://www.wowhead.com/item=' + item.itemId;
+      const cls = opts.extra ? 'wh-link wh-link-extra' : 'wh-link';
+      return `<a href="${escapeHtml(href)}" data-wowhead="${escapeHtml(data)}" target="_blank" rel="noopener" class="${cls}">${escapeHtml(text)}</a>`;
+    }
+
+    /**
+     * After re-rendering a results table we need to tell the Wowhead widget
+     * to scan for new links — it doesn't watch the DOM. The script may not
+     * be loaded yet on first render (defer + slow networks); guarding with
+     * `?.` makes the call a no-op in that case.
+     */
+    function refreshWowheadLinks() {
+      try { window.$WowheadPower?.refreshLinks?.(); } catch {}
+    }
+
     function fmtDps(n) {
       if (n === null || n === undefined) return '—';
       return Math.round(n).toLocaleString('en-US');
@@ -832,9 +969,104 @@
       return Math.round(s/86400) + 'd ago';
     }
 
+    // ---- recent profiles ------------------------------------------------
+    //
+    // Loaded from the server on boot and after each successful submit.
+    // The /api/recent endpoint returns metadata only (no profile text),
+    // so the response is small even with many characters tracked. Profile
+    // bodies are fetched on click via /api/recent/:id and pasted into the
+    // tab's textarea.
+
+    async function loadRecentProfiles() {
+      try {
+        const r = await fetch('/api/recent');
+        if (!r.ok) return;
+        const data = await r.json();
+        renderRecentChips(data);
+      } catch {
+        // Non-fatal — chips just won't show.
+      }
+    }
+
+    /**
+     * Render the chip strip above each tab's profile textarea. Each tab
+     * gets the same chips (we don't filter by tab kind because the user
+     * might paste a profile saved from one tab into another).
+     *
+     * @param {object} byCharacter   { "Char-Realm": [{id, savedAt, label, kind, bytes}], ... }
+     */
+    function renderRecentChips(byCharacter) {
+      // Flatten newest-first across all characters, capped at a sensible
+      // total to avoid an obnoxious chip strip if the user has 30 alts.
+      const flat = [];
+      for (const [character, entries] of Object.entries(byCharacter || {})) {
+        for (const e of entries) flat.push({ ...e, character });
+      }
+      flat.sort((a, b) => b.savedAt - a.savedAt);
+      const visible = flat.slice(0, 9);  // 3 chars * 3 entries max in practice
+
+      const html = visible.map((e) => {
+        const ago = formatAgo(e.savedAt);
+        // The character name is the chip's main label; kind+ago goes
+        // smaller so the row stays scannable.
+        return `
+          <div class="recent-chip" data-id="${escapeHtml(e.id)}" title="${escapeHtml(e.label || '')}">
+            <span class="name">${escapeHtml(e.character)}</span>
+            <span class="ago">${escapeHtml(e.kind || '')} · ${ago}</span>
+            <span class="x" data-action="remove" data-id="${escapeHtml(e.id)}" title="Remove">×</span>
+          </div>`;
+      }).join('');
+
+      for (const strip of document.querySelectorAll('.recent-chips')) {
+        strip.innerHTML = html;
+      }
+    }
+
+    /**
+     * Click handler — delegated on the document so it picks up newly
+     * rendered chips without re-binding.
+     */
+    document.addEventListener('click', async (ev) => {
+      // The × button on a chip removes it. Stop propagation so we don't
+      // also trigger the load-into-textarea action on the parent chip.
+      const removeBtn = ev.target.closest('[data-action="remove"]');
+      if (removeBtn) {
+        ev.stopPropagation();
+        const id = removeBtn.dataset.id;
+        try {
+          await fetch('/api/recent/' + encodeURIComponent(id), { method: 'DELETE' });
+        } catch {}
+        await loadRecentProfiles();
+        return;
+      }
+
+      // Click on a chip body: fetch the profile text, find the nearest
+      // textarea via the strip's data-target attribute, paste it in.
+      const chip = ev.target.closest('.recent-chip');
+      if (!chip) return;
+      const id = chip.dataset.id;
+      const strip = chip.closest('.recent-chips');
+      const targetId = strip?.dataset.target;
+      if (!id || !targetId) return;
+      try {
+        const r = await fetch('/api/recent/' + encodeURIComponent(id));
+        if (!r.ok) return;
+        const data = await r.json();
+        const ta = document.getElementById(targetId);
+        if (ta && data.profile) {
+          ta.value = data.profile;
+          ta.focus();
+          // Briefly flash the chip so the user sees the action took.
+          chip.style.borderColor = 'var(--accent)';
+          setTimeout(() => { chip.style.borderColor = ''; }, 400);
+        }
+      } catch {}
+    });
+
     // ---- boot -----------------------------------------------------------
     fetchStatus();
     connectWS();
+    loadRecentProfiles();
     setInterval(fetchStatus, 30000); // re-poll status periodically
   </script>
 </body>

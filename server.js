@@ -25,6 +25,7 @@ import { JobQueue } from './lib/queue.js';
 import {
   buildQuickSim, buildDroptimizer, buildTopGear,
 } from './lib/profilesets.js';
+import { RecentProfileStore } from './lib/recent.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
@@ -112,8 +113,18 @@ async function runJob(job, update) {
   // so we don't have to re-parse on every page load.
   try {
     const parsed = await parseJsonReport(jsonPath);
+
+    // Merge in the item-info map captured at sim-build time, so the UI can
+    // render each result row with a Wowhead link and tooltip. We key by
+    // profileset name (which we control end-to-end — we generated it).
+    const itemMap = job.meta?.itemMap || {};
+    const enriched = parsed.results.map((r) => ({
+      ...r,
+      item: itemMap[r.name] || null,
+    }));
+
     update({
-      results: { baseline: parsed.baseline, profilesets: parsed.results },
+      results: { baseline: parsed.baseline, profilesets: enriched },
       logLine: `Parsed ${parsed.results.length} profileset result(s).`,
     });
   } catch (err) {
@@ -130,6 +141,10 @@ const queue = new JobQueue({
   runner: runJob,
 });
 await queue.init();
+
+// Server-side recent-profile store. Saves on successful job submission so
+// the user can re-paste yesterday's character without re-opening WoW.
+const recent = new RecentProfileStore({ dataDir: DATA_DIR });
 
 const app = express();
 app.use(express.json({ limit: '4mb' })); // SimC profiles are small; bag exports can grow
@@ -166,12 +181,17 @@ app.post('/api/sim/quick', async (req, res) => {
     if (!profile || typeof profile !== 'string') {
       return res.status(400).json({ error: 'profile (SimC string) is required' });
     }
+    const charLabel = extractCharLabel(profile) || 'Quick Sim';
     const id = await queue.submit({
       kind: 'quick',
-      label: extractCharLabel(profile) || 'Quick Sim',
+      label: charLabel,
       simc: buildQuickSim(profile),
       options: { iterations, threads },
     });
+    // Save under the character key (or a fallback) so the user can re-load
+    // this profile from the UI later. Fire-and-forget — a save failure must
+    // never block sim submission.
+    recent.save(charLabel, profile, { kind: 'quick', label: charLabel });
     res.json({ id });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -187,12 +207,18 @@ app.post('/api/sim/droptimizer', async (req, res) => {
     if (!Array.isArray(candidates) || candidates.length === 0) {
       return res.status(400).json({ error: 'candidates[] must be a non-empty array of SimC gear lines' });
     }
-    const simc = buildDroptimizer(profile, candidates);
+    const { simc, itemMap } = buildDroptimizer(profile, candidates);
+    const charLabel = extractCharLabel(profile) || 'Droptimizer';
     const id = await queue.submit({
       kind: 'droptimizer',
-      label: `${extractCharLabel(profile) || 'Droptimizer'} · ${candidates.length} items`,
+      label: `${charLabel} · ${candidates.length} items`,
       simc,
       options: { iterations, threads },
+      meta: { itemMap },
+    });
+    recent.save(charLabel, profile, {
+      kind: 'droptimizer',
+      label: `${charLabel} · ${candidates.length} items`,
     });
     res.json({ id });
   } catch (err) {
@@ -208,7 +234,7 @@ app.post('/api/sim/topgear', async (req, res) => {
     const { profile, iterations, threads } = req.body || {};
     if (!profile) return res.status(400).json({ error: 'profile is required' });
     const built = buildTopGear(profile);
-    const { simc, count, skipped, primaryStat, weaponConfig } = built;
+    const { simc, count, skipped, primaryStat, weaponConfig, itemMap } = built;
     if (count === 0) {
       return res.status(400).json({
         error: 'no bag items left to test. Either no bag contents in your export ' +
@@ -218,19 +244,58 @@ app.post('/api/sim/topgear', async (req, res) => {
       });
     }
     const skippedCount = Array.isArray(skipped) ? skipped.length : (skipped || 0);
+    const charLabel = extractCharLabel(profile) || 'Top Gear';
+    const jobLabel = `${charLabel} · ${count} swap(s)` +
+                     (skippedCount ? ` (${skippedCount} filtered)` : '');
     const id = await queue.submit({
       kind: 'topgear',
-      label: `${extractCharLabel(profile) || 'Top Gear'} · ${count} swap(s)` +
-             (skippedCount ? ` (${skippedCount} filtered)` : ''),
+      label: jobLabel,
       simc,
       options: { iterations, threads },
       meta: {
         skippedItems: Array.isArray(skipped) ? skipped : [],
         primaryStat,
         weaponConfig,
+        itemMap,
       },
     });
+    recent.save(charLabel, profile, { kind: 'topgear', label: jobLabel });
     res.json({ id });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ---- API: recent profiles --------------------------------------------------
+//
+// Saved on each successful sim submit. The list endpoint returns metadata
+// only (id, character, savedAt, kind, label, byte size) — the actual profile
+// text is fetched lazily via /api/recent/:id when the user clicks a chip.
+// Profiles are 2-4 KB each, so eagerly sending them all isn't a real concern,
+// but keeping list responses tiny means the boot snapshot stays fast.
+
+app.get('/api/recent', async (_req, res) => {
+  try {
+    res.json(await recent.list());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/recent/:id', async (req, res) => {
+  try {
+    const entry = await recent.get(req.params.id);
+    if (!entry) return res.status(404).json({ error: 'not found' });
+    res.json(entry);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/recent/:id', async (req, res) => {
+  try {
+    const ok = await recent.remove(req.params.id);
+    res.json({ removed: !!ok });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
